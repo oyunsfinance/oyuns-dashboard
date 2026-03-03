@@ -638,11 +638,12 @@ function AddDebtModal({ onClose, onSave, editData }) {
     debtType: editData.debtType || "Авлага",
     name:     editData.name     || "",
     date:     (editData.date||today()).slice(0,10),
+    dueDate:  editData.dueDate  || "",
     amount:   String(editData.amount || ""),
     currency: editData.currency || "MNT",
     note:     editData.note     || "",
     status:   editData.status   || "Хүлээгдэж буй",
-  } : {debtType:"Авлага",name:"",date:today(),amount:"",currency:"MNT",note:"",status:"Хүлээгдэж буй"});
+  } : {debtType:"Авлага",name:"",date:today(),dueDate:"",amount:"",currency:"MNT",note:"",status:"Хүлээгдэж буй"});
   const set = (k,v) => setForm(f => ({...f,[k]:v}));
   function save() {
     if (!form.name || !form.amount) { alert("Нэр болон дүн оруулна уу"); return; }
@@ -672,7 +673,14 @@ function AddDebtModal({ onClose, onSave, editData }) {
           </select>
         </Field>
       </div>
-      <Field label="Огноо"><input style={inp} type="date" value={form.date} onChange={e => set("date",e.target.value)}/></Field>
+      <Field label="Олгосон огноо"><input style={inp} type="date" value={form.date} onChange={e => set("date",e.target.value)}/></Field>
+      <Field label="Буцаах огноо (тодорхойгүй бол хоосон)">
+        <div style={{display:"flex",gap:"8px",alignItems:"center"}}>
+          <input style={{...inp,flex:1}} type="date" value={form.dueDate} onChange={e => set("dueDate",e.target.value)}/>
+          {form.dueDate && <button type="button" onClick={()=>set("dueDate","")} style={{background:"#fee2e2",border:"none",borderRadius:"8px",padding:"8px 10px",cursor:"pointer",fontSize:"12px",color:"#991b1b",fontWeight:700,flexShrink:0}}>✕</button>}
+        </div>
+        {!form.dueDate && <div style={{fontSize:"10px",color:"#94a3b8",marginTop:"4px"}}>Хоосон = тодорхойгүй</div>}
+      </Field>
       <Field label="Тайлбар"><input style={inp} value={form.note} onChange={e => set("note",e.target.value)} placeholder="Нэмэлт тайлбар"/></Field>
       <div style={{display:"flex",gap:"10px",marginTop:"6px"}}>
         <Btn variant="ghost" onClick={onClose} style={{flex:1}}>Болих</Btn>
@@ -803,7 +811,22 @@ function DebtSection({ debts, onAdd, onToggle, onDelete, onEdit, onAddPayment })
             ) : (
               <div style={{fontSize:"14px",fontWeight:800,color:"#0f172a",marginBottom:"4px"}}>{fmtN(d.amount)}</div>
             )}
-            <div style={{fontSize:"11px",color:"#94a3b8"}}>{fmtDateDisplay(d.date)}</div>
+            <div style={{fontSize:"11px",color:"#94a3b8"}}>Олгосон: {fmtDateDisplay(d.date)}</div>
+            {d.dueDate ? (
+              <div style={{fontSize:"11px",fontWeight:700,marginTop:"2px",
+                color: (() => { const dd=new Date(d.dueDate); const now=new Date(); const diff=Math.ceil((dd-now)/(1000*60*60*24));
+                  return diff<0?"#ef4444":diff===0?"#f59e0b":diff<=3?"#f97316":"#64748b"; })()
+              }}>
+                {(() => { const dd=new Date(d.dueDate); const now=new Date(); const diff=Math.ceil((dd-now)/(1000*60*60*24));
+                  if(diff<0) return "⚠️ Хоцорсон "+Math.abs(diff)+" өдөр";
+                  if(diff===0) return "🔴 Өнөөдөр өгөх";
+                  if(diff<=3) return "🟡 "+diff+" өдрийн дараа";
+                  return "📅 "+fmtDateDisplay(d.dueDate);
+                })()}
+              </div>
+            ) : (
+              <div style={{fontSize:"10px",color:"#cbd5e1",marginTop:"2px"}}>Буцаах огноо тодорхойгүй</div>
+            )}
             {d.note && <div style={{fontSize:"11px",color:"#94a3b8",marginTop:"2px",fontStyle:"italic"}}>{d.note}</div>}
             {(d.payments||[]).length > 0 && (
               <div style={{marginTop:"6px",display:"flex",flexWrap:"wrap",gap:"4px"}}>
@@ -877,6 +900,57 @@ function DebtSection({ debts, onAdd, onToggle, onDelete, onEdit, onAddPayment })
           </div>
         </div>
       </div>
+      {/* ── Өнөөдөр / Хоцорсон карт ── */}
+      {(() => {
+        const todayStr = today();
+        const overdue  = pending.filter(d => d.dueDate && d.dueDate < todayStr);
+        const dueToday = pending.filter(d => d.dueDate && d.dueDate === todayStr);
+        const dueSoon  = pending.filter(d => {
+          if (!d.dueDate || d.dueDate <= todayStr) return false;
+          const diff = Math.ceil((new Date(d.dueDate) - new Date())/(1000*60*60*24));
+          return diff <= 3;
+        });
+        const urgent = [...overdue, ...dueToday, ...dueSoon];
+        if (urgent.length === 0) return null;
+        const CUR_SYM3 = {MNT:"₮",RUB:"₽",USDT:"$"};
+        return (
+          <div style={{marginBottom:"16px",background:"linear-gradient(135deg,#fff7ed,#fef2f2)",borderRadius:"14px",padding:"14px 16px",border:"1px solid #fed7aa"}}>
+            <div style={{fontSize:"12px",fontWeight:800,color:"#c2410c",marginBottom:"10px",display:"flex",alignItems:"center",gap:"6px"}}>
+              🔔 Анхаарах шаардлагатай ({urgent.length})
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:"7px"}}>
+              {urgent.map(d => {
+                const diff = d.dueDate ? Math.ceil((new Date(d.dueDate)-new Date())/(1000*60*60*24)) : null;
+                const paidAmt = (d.payments||[]).reduce((s,p)=>s+Number(p.amount),0);
+                const remaining = Number(d.amount) - paidAmt;
+                const sym = CUR_SYM3[d.currency]||"₮";
+                const ac = d.debtType==="Авлага"?"#1a56db":"#f59e0b";
+                let badge, badgeColor;
+                if (diff === null || diff > 3) { badge="📅"; badgeColor="#64748b"; }
+                else if (diff < 0)  { badge="⚠️ "+Math.abs(diff)+"өдөр хоцорсон"; badgeColor="#ef4444"; }
+                else if (diff === 0) { badge="🔴 Өнөөдөр"; badgeColor="#ef4444"; }
+                else                { badge="🟡 "+diff+"өдрийн дараа"; badgeColor="#f97316"; }
+                return (
+                  <div key={d.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#fff",borderRadius:"10px",padding:"10px 12px",borderLeft:"3px solid "+ac}}>
+                    <div>
+                      <div style={{display:"flex",gap:"6px",alignItems:"center",marginBottom:"2px"}}>
+                        <span style={{fontSize:"10px",fontWeight:700,padding:"1px 6px",borderRadius:"4px",background:d.debtType==="Авлага"?"#dbeafe":"#fef3c7",color:d.debtType==="Авлага"?"#1e40af":"#92400e"}}>{d.debtType}</span>
+                        <span style={{fontWeight:800,fontSize:"13px",color:"#0f172a"}}>{d.name}</span>
+                      </div>
+                      <div style={{fontSize:"11px",fontWeight:700,color:badgeColor}}>{badge}</div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontWeight:900,fontSize:"14px",color:ac}}>{sym}{Math.round(remaining).toLocaleString("en-US")}</div>
+                      <div style={{fontSize:"10px",color:"#94a3b8"}}>үлдэгдэл</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
       {debts.length === 0
         ? <div style={{textAlign:"center",padding:"32px",color:"#94a3b8",background:"#f8fafc",borderRadius:"12px",fontSize:"14px"}}>Гүйлгээ байхгүй байна</div>
         : <>

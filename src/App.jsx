@@ -130,7 +130,7 @@ async function apiPost(body) {
         method: "POST",
         mode: "cors",
         credentials: "omit",
-        headers: { "Content-Type": "text/plain" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
         redirect: "follow",
       });

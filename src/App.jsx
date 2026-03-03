@@ -11,11 +11,27 @@ function useWindowWidth() {
   return w;
 }
 
-// ── Хэрэглэгчид + PIN ──
-const USERS = [
-  { id: "oyuns",     name: "Сүрэнжав",  username: "oyuns",     pin: "oyun$", color: "#1a56db" },
-  { id: "anujin4x",  name: "Анужин",    username: "anujin4x",  pin: "oyunx", color: "#0e9f6e" },
-];
+// ── Зөвшөөрөгдсөн Telegram хэрэглэгчид (user ID → нэр/өнгө) ──
+// ID нь хэзээ ч өөрчлөгддөггүй тул username-ээс найдвартай
+const ALLOWED_TG_USERS = {
+  1447446407: { name: "Сүрэнжав", username: "oyuns",    color: "#1a56db" },
+  1920453419: { name: "Анужин",   username: "anujin4x", color: "#0e9f6e" },
+};
+
+// ── Telegram WebApp SDK helper ──
+function getTelegramUser() {
+  try {
+    const tg = window.Telegram?.WebApp;
+    if (!tg || !tg.initDataUnsafe?.user) return null;
+    const u = tg.initDataUnsafe.user;
+    return {
+      telegramId: u.id,                              // тоо — үндсэн шалгуур
+      username:   (u.username || "").toLowerCase(),  // нэмэлт мэдээлэл
+      firstName:  u.first_name || "",
+      lastName:   u.last_name  || "",
+    };
+  } catch(e) { return null; }
+}
 
 const DEFAULT_ACCOUNTS = [
   { id: "khan_oyun",  name: "Хаан банк Оюун-Эрдэнэ", type: "personal", currency: "MNT", color: "#1a56db" },
@@ -1405,32 +1421,110 @@ function FinanceDashboard({ rows, loading, search, setSearch, status, setStatus,
 }
 
 // ════════════════════════════════
-// LOGIN SCREEN
+// TELEGRAM LOGIN SCREEN
 // ════════════════════════════════
 function LoginScreen({ onLogin }) {
+  const [checking, setChecking] = useState(true);
+  const [denied,   setDenied]   = useState(false);
+  const [tgUser,   setTgUser]   = useState(null);
+
+  useEffect(() => {
+    // Telegram WebApp-г эхлүүлэх
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+      // Header color
+      tg.setHeaderColor("#0f172a");
+      tg.setBackgroundColor("#f0f4f8");
+    }
+
+    const user = getTelegramUser();
+    setTgUser(user);
+
+    if (!user) {
+      // Dev орчинд (browser) PIN хэрэглэгч шалгах
+      setChecking(false);
+      return;
+    }
+
+    // Telegram User ID-аар шалгана (username өөрчлөгдөж болох тул ID найдвартай)
+    const allowed = ALLOWED_TG_USERS[user.telegramId];
+    if (allowed) {
+      onLogin({
+        id:       String(user.telegramId),
+        name:     allowed.name,
+        username: allowed.username,
+        color:    allowed.color,
+        tgId:     user.telegramId,
+      });
+    } else {
+      setDenied(true);
+      setChecking(false);
+    }
+  }, []);
+
+  // Dev/browser орчинд PIN login харуулна
   const [username, setUsername] = useState("");
-  const [pin, setPin]           = useState("");
-  const [error, setError]       = useState("");
-  const [showPin, setShowPin]   = useState(false);
-  const inpStyle = {
-    width:"100%",padding:"14px 16px",borderRadius:"12px",
-    border:"1.5px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.08)",
-    fontSize:"15px",color:"#fff",fontFamily:"inherit",outline:"none",
-    boxSizing:"border-box",letterSpacing:"0.05em",
-  };
-  function tryLogin(e) {
+  const [pin,      setPin]      = useState("");
+  const [error,    setError]    = useState("");
+  const [showPin,  setShowPin]  = useState(false);
+
+  // PIN login (зөвхөн browser/dev орчинд)
+  const PIN_USERS = [
+    { id:"oyuns",    name:"Сүрэнжав", username:"oyuns",    pin:"oyun$", color:"#1a56db" },
+    { id:"anujin4x", name:"Анужин",   username:"anujin4x", pin:"oyunx", color:"#0e9f6e" },
+  ];
+
+  function tryPinLogin(e) {
     e && e.preventDefault();
-    const u = USERS.find(x => x.username===username.trim() && x.pin===pin);
-    if (u) { onLogin(u); } else { setError("Нэвтрэх нэр эсвэл PIN буруу байна"); setPin(""); }
+    const u = PIN_USERS.find(x => x.username === username.trim() && x.pin === pin);
+    if (u) { onLogin(u); }
+    else    { setError("Нэвтрэх нэр эсвэл PIN буруу байна"); setPin(""); }
   }
+
+  const inpStyle = {
+    width:"100%", padding:"14px 16px", borderRadius:"12px",
+    border:"1.5px solid rgba(255,255,255,0.15)", background:"rgba(255,255,255,0.08)",
+    fontSize:"15px", color:"#fff", fontFamily:"inherit", outline:"none",
+    boxSizing:"border-box", letterSpacing:"0.05em",
+  };
+
+  if (checking) {
+    return (
+      <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:"linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%)"}}>
+        <div style={{textAlign:"center"}}>
+          <div style={{fontSize:"30px",fontWeight:900,color:"#fff",letterSpacing:"0.08em",marginBottom:"8px"}}>OYUNS</div>
+          <div style={{fontSize:"13px",color:"#93c5fd",fontWeight:600}}>Нэвтэрч байна...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (denied) {
+    return (
+      <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:"linear-gradient(135deg,#0f172a 0%,#7f1d1d 100%)",fontFamily:"'Montserrat',sans-serif",padding:"20px"}}>
+        <div style={{textAlign:"center",maxWidth:"300px"}}>
+          <div style={{fontSize:"48px",marginBottom:"16px"}}>🚫</div>
+          <div style={{fontSize:"18px",fontWeight:900,color:"#fff",marginBottom:"8px"}}>Хандах эрхгүй</div>
+          <div style={{fontSize:"13px",color:"#fca5a5",lineHeight:1.6}}>
+            Таны Telegram хэрэглэгч (@{tgUser?.username || "unknown"}) энэ аппыг ашиглах эрхгүй байна.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Browser орчин — PIN login
   return (
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:"linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%)",fontFamily:"'Montserrat',sans-serif",padding:"20px"}}>
       <div style={{width:"100%",maxWidth:"340px"}}>
         <div style={{textAlign:"center",marginBottom:"40px"}}>
           <div style={{fontSize:"30px",fontWeight:900,color:"#fff",letterSpacing:"0.08em"}}>OYUNS</div>
           <div style={{fontSize:"11px",color:"#93c5fd",fontWeight:600,letterSpacing:"0.15em",marginTop:"6px"}}>САНХҮҮГИЙН БҮРТГЭЛ</div>
+          <div style={{fontSize:"10px",color:"rgba(255,255,255,0.3)",marginTop:"8px"}}>🖥 Dev / Browser орчин</div>
         </div>
-        <form onSubmit={tryLogin} style={{display:"flex",flexDirection:"column",gap:"14px"}}>
+        <form onSubmit={tryPinLogin} style={{display:"flex",flexDirection:"column",gap:"14px"}}>
           <div>
             <div style={{fontSize:"10px",fontWeight:700,color:"rgba(255,255,255,0.45)",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:"7px"}}>Нэвтрэх нэр</div>
             <input style={inpStyle} value={username} onChange={e=>{setUsername(e.target.value);setError("");}} placeholder="username" autoComplete="username" autoCapitalize="none"/>
@@ -1464,10 +1558,7 @@ export default function App() {
   }, []);
 
   const winW = useWindowWidth();
-  const [currentUser, setCurrentUser] = useState(() => {
-    try { const s=sessionStorage.getItem("oyuns_user"); if(s) return JSON.parse(s); } catch(e) {}
-    return null;
-  });
+  const [currentUser, setCurrentUser] = useState(null);
   const [tab, setTab]           = useState("dashboard");
   const [accounts, setAccounts] = useState(() => {
     try { const s=localStorage.getItem("oyuns_accounts"); if(s) return JSON.parse(s); } catch(e) {}
@@ -1581,7 +1672,11 @@ export default function App() {
   ];
 
   if (!currentUser) return (
-    <LoginScreen onLogin={user=>{sessionStorage.setItem("oyuns_user",JSON.stringify(user));setCurrentUser(user);}}/>
+    <LoginScreen onLogin={user => {
+      setCurrentUser(user);
+      // Telegram WebApp-д haptic feedback
+      try { window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred("success"); } catch(e) {}
+    }}/>
   );
   if (loading) return (
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:"#f0f4f8",fontFamily:"'Montserrat',sans-serif",color:"#475569",fontSize:"15px"}}>Ачааллаж байна...</div>
@@ -1606,8 +1701,17 @@ export default function App() {
                 {currentUser.name}
               </div>
             </div>
-            <button onClick={()=>{sessionStorage.removeItem("oyuns_user");setCurrentUser(null);}} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:"8px",padding:"6px 10px",cursor:"pointer",color:"rgba(255,255,255,0.7)",fontSize:"11px",fontWeight:700,fontFamily:"inherit"}}>
-              Гарах
+            <button onClick={()=>{
+              const tg = window.Telegram?.WebApp;
+              if (tg && tg.initDataUnsafe?.user) {
+                // Telegram дотор бол апп хаах
+                tg.close();
+              } else {
+                // Browser орчинд logout
+                setCurrentUser(null);
+              }
+            }} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:"8px",padding:"6px 10px",cursor:"pointer",color:"rgba(255,255,255,0.7)",fontSize:"11px",fontWeight:700,fontFamily:"inherit"}}>
+              {window.Telegram?.WebApp?.initDataUnsafe?.user ? "✕ Хаах" : "Гарах"}
             </button>
             <LiveClock/>
           </div>
@@ -1625,7 +1729,7 @@ export default function App() {
         </div>
       )}
 
-      <div style={{padding:winW<640?"8px":"16px",maxWidth:tab==="finance"?"1200px":"560px",margin:"0 auto"}}>
+      <div style={{padding:winW<640?"8px":"16px",maxWidth:tab==="finance"?"1200px":"560px",margin:"0 auto",paddingBottom: winW<640?"80px":"50px"}}>
         {tab==="dashboard" && (<>
           {/* Нийт үлдэгдэл */}
           <div style={{background:"linear-gradient(135deg,#0f172a,#1e3a5f)",borderRadius:"16px",padding:"16px 18px",marginBottom:"20px",boxShadow:"0 4px 16px rgba(0,0,0,0.15)"}}>

@@ -1451,6 +1451,7 @@ function LoginScreen({ onLogin }) {
     // Telegram User ID-аар шалгана (username өөрчлөгдөж болох тул ID найдвартай)
     const allowed = ALLOWED_TG_USERS[user.telegramId];
     if (allowed) {
+      // ✅ Шууд нэвтэрнэ — ямар ч login дэлгэц харуулахгүй
       onLogin({
         id:       String(user.telegramId),
         name:     allowed.name,
@@ -1458,6 +1459,8 @@ function LoginScreen({ onLogin }) {
         color:    allowed.color,
         tgId:     user.telegramId,
       });
+      // checking=false хийхгүй — onLogin дуудсаны дараа
+      // LoginScreen render болохгүй болно
     } else {
       setDenied(true);
       setChecking(false);
@@ -1558,7 +1561,32 @@ export default function App() {
   }, []);
 
   const winW = useWindowWidth();
-  const [currentUser, setCurrentUser] = useState(null);
+
+  // ── Telegram-д шууд нэвтэрнэ — LoginScreen харуулахгүйгээр ──
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const tg = window.Telegram?.WebApp;
+      if (tg?.initDataUnsafe?.user) {
+        const u      = tg.initDataUnsafe.user;
+        const allowed = ALLOWED_TG_USERS[u.id];
+        if (allowed) {
+          // Telegram WebApp тохиргоо
+          tg.ready();
+          tg.expand();
+          try { tg.setHeaderColor("#0f172a"); } catch(e) {}
+          try { tg.setBackgroundColor("#f0f4f8"); } catch(e) {}
+          return {
+            id:       String(u.id),
+            name:     allowed.name,
+            username: allowed.username,
+            color:    allowed.color,
+            tgId:     u.id,
+          };
+        }
+      }
+    } catch(e) {}
+    return null;
+  });
   const [tab, setTab]           = useState("dashboard");
   const [accounts, setAccounts] = useState(() => {
     try { const s=localStorage.getItem("oyuns_accounts"); if(s) return JSON.parse(s); } catch(e) {}
@@ -1671,13 +1699,30 @@ export default function App() {
     {currency:"USDT",accs:accounts.filter(a=>a.currency==="USDT")},
   ];
 
-  if (!currentUser) return (
-    <LoginScreen onLogin={user => {
-      setCurrentUser(user);
-      // Telegram WebApp-д haptic feedback
-      try { window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred("success"); } catch(e) {}
-    }}/>
-  );
+  if (!currentUser) {
+    // Telegram дотор байгаа ч ID зөвшөөрөгдөөгүй бол хаах дэлгэц
+    const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+    if (tgUser && !ALLOWED_TG_USERS[tgUser.id]) {
+      return (
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:"linear-gradient(135deg,#0f172a 0%,#7f1d1d 100%)",fontFamily:"'Montserrat',sans-serif",padding:"20px"}}>
+          <div style={{textAlign:"center",maxWidth:"300px"}}>
+            <div style={{fontSize:"48px",marginBottom:"16px"}}>🚫</div>
+            <div style={{fontSize:"18px",fontWeight:900,color:"#fff",marginBottom:"8px"}}>Хандах эрхгүй</div>
+            <div style={{fontSize:"13px",color:"#fca5a5",lineHeight:1.6}}>
+              Таны Telegram ID ({tgUser.id}) энэ аппыг ашиглах эрхгүй байна.
+            </div>
+          </div>
+        </div>
+      );
+    }
+    // Browser орчинд PIN login харуулна
+    return (
+      <LoginScreen onLogin={user => {
+        setCurrentUser(user);
+        try { window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred("success"); } catch(e) {}
+      }}/>
+    );
+  }
   if (loading) return (
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:"#f0f4f8",fontFamily:"'Montserrat',sans-serif",color:"#475569",fontSize:"15px"}}>Ачааллаж байна...</div>
   );

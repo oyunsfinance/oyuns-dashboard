@@ -81,9 +81,7 @@ function fmt(n, cur) {
 function fmtMNT(n) {
   if (n === null || n === undefined || isNaN(n)) return "—";
   const abs = Math.abs(n);
-  const s = abs >= 1000000
-    ? (abs / 1000000).toLocaleString("mn-MN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "сая"
-    : abs.toLocaleString("mn-MN", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  const s = abs.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   return (n < 0 ? "-" : "") + "₮" + s;
 }
 
